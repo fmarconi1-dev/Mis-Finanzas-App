@@ -1,0 +1,25 @@
+# Tema visual de la app. Streamlit lo carga automáticamente al arrancar.
+# Cualquier cambio acá se ve refrescando el navegador (Ctrl+R).
+#
+# Paleta "Cosmic Slate" (portada desde la versión React+Tailwind del proyecto):
+#   Fondo absoluto:   #09090B (zinc-950)
+#   Cards / paneles:  #18181B (zinc-900)
+#   Bordes finos:     #27272A (zinc-800)
+#   Texto base:       #E4E4E7 (zinc-200)
+#   Texto secundario: #A1A1AA (zinc-400)
+#   Acento IA/activo: #8B5CF6 violeta + #A78BFA hover
+#   Acento positivo:  #10B981 esmeralda (sigue siendo "inversión / verde")
+#   Acento negativo:  #F43F5E rosa/rojo (sigue siendo "gasto")
+# Tipografías cargadas desde Google Fonts en _styles.py:
+#   Inter (UI), Space Grotesk (display), JetBrains Mono (números / mono).
+
+[theme]
+base = "dark"
+primaryColor = "#8B5CF6"            # violeta — acciones primarias, focus, acentos IA
+backgroundColor = "#09090B"         # fondo absoluto Cosmic Slate
+secondaryBackgroundColor = "#18181B" # cards, inputs, expanders, sidebars
+textColor = "#E4E4E7"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false            # privacidad: no enviar telemetría a Streamlit

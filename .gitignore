@@ -1,0 +1,81 @@
+# ============================================================
+# .gitignore — Mis Finanzas Personales (repo público)
+#
+# CRÍTICO: este repo es público. Cualquier cosa que filtre datos
+# personales (transacciones, saldos, backups, secrets) NO va arriba.
+# ============================================================
+
+# ----- Secrets y configuración local -----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# ----- Datos personales (NO subir nunca) -----
+# La DB local y todos los backups: contienen transacciones reales.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Los CSVs / Excels originales son los datos privados de Franco usados
+# para la siembra inicial. La app se puede usar desde cero sin ellos
+# (alta manual desde la UI o importación de tu propio CSV).
+Diario.csv
+Diario.xlsx
+Mensual.csv
+Mensual.xlsx
+seed_finanzas.db
+
+# Seed local (caché de pruebas con data ficticia, si la generás)
+seed/local/
+
+# ----- Python -----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.tox/
+*.egg-info/
+dist/
+build/
+requirements.lock      # generado por la build, no manual
+
+# ----- IDE y editores -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.spyderproject
+.spyproject
+
+# ----- Sistema operativo -----
+.DS_Store
+Thumbs.db
+desktop.ini
+.fuse_hidden*
+
+# ----- Streamlit -----
+.streamlit/secrets.toml
+
+# ----- Logs / temporales -----
+*.log
+*.tmp
+*.bak
+
+# ----- Fly.io -----
+.fly/
+
+# ----- Archivos basura conocidos del proyecto -----
+4.1.0

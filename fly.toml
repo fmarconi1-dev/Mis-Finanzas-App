@@ -1,0 +1,35 @@
+# fly.toml — configuración de deploy en Fly.io
+#
+# IMPORTANTE: cambiá el valor de `app` por un nombre único global (ver Bloque B).
+# El resto ya está configurado para esta app.
+
+app = "radar-financiero"
+primary_region = "gru"   # São Paulo (lo más cercano a Argentina)
+
+[build]
+
+[http_service]
+  internal_port = 8501          # Streamlit escucha acá (lo setea el Dockerfile)
+  force_https = true
+  auto_stop_machines = true     # duerme cuando nadie la usa (free tier)
+  auto_start_machines = true    # se despierta sola al primer request
+  min_machines_running = 0
+  processes = ["app"]
+
+  # Health check con gracia suficiente para que Streamlit termine de bootear
+  # (~5-9s). Sin esto, el deploy tira el warning de "not listening".
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/_stcore/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "1gb"                # holgado para pandas/plotly
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "finanzas_data"      # volumen persistente
+  destination = "/app/data"     # acá viven la DB y los backups

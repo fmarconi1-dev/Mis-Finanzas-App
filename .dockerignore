@@ -1,0 +1,51 @@
+# Excluir del build context para imágenes más chicas y sin datos privados.
+
+# Entornos Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Tests no van a producción
+tests/
+
+# Datos privados — se montan como volumen, no se hornean en la imagen
+data/
+
+# CSVs y XLSX del usuario (Franco-specific, no van en la imagen pública)
+*.csv
+*.xlsx
+*.xlsm
+
+# Seed de migración inicial — nunca debe quedar horneado en la imagen
+seed_finanzas.db
+
+# Documentos generados localmente
+premortem-*.html
+premortem-*.md
+*.pdf
+
+# IDEs
+.vscode/
+.idea/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# Docker meta
+Dockerfile
+docker-compose.yml
+.dockerignore
+DEPLOY.md
