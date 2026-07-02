@@ -270,9 +270,37 @@ def render() -> None:
         if df_cat.empty:
             st.info("Sin gastos registrados.")
         else:
+            # Toggle: agrupar por motivo (detalle fino) o por subcategoría
+            # (agregado más legible). Mapeo motivo → subcategoría desde
+            # cats_full y reagrupo si el usuario elige subcategoría.
+            agrupar_por = st.radio(
+                "Agrupar por",
+                options=["Motivo", "Subcategoría"],
+                horizontal=True,
+                key="donut_agrupar_por",
+                label_visibility="collapsed",
+            )
+
+            if agrupar_por == "Subcategoría":
+                # mapping motivo → (grupo, subcat) ya está en `cats`
+                df_pie = df_cat.copy()
+                df_pie["subcategoria"] = df_pie["motivo"].map(
+                    lambda m: (cats.get(m, ("", None))[1]) or "Sin subcategoría"
+                )
+                # reagrupar por grupo + subcategoría
+                df_pie = (
+                    df_pie.groupby(["subcategoria", "grupo"], as_index=False)["gasto"]
+                    .sum()
+                    .sort_values("gasto", ascending=False)
+                )
+                names_col = "subcategoria"
+            else:
+                df_pie = df_cat
+                names_col = "motivo"
+
             fig_pie = px.pie(
-                df_cat,
-                values="gasto", names="motivo",
+                df_pie,
+                values="gasto", names=names_col,
                 color="grupo",
                 color_discrete_map=COLOR_POR_GRUPO,
                 hole=0.5,

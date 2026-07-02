@@ -4,6 +4,48 @@ Changelog narrativo: qué se hizo, cuándo, por qué. Ordenado del más reciente
 
 ---
 
+## 2026-06-26 · Grupo familiar D1 (Shadow) — migración M6
+
+**Qué:** primer deploy del feature de grupo familiar. Solo infraestructura; las queries del `core/` siguen usando `user_id`. El cutover a `workspace_id` viene en D2.
+
+**Contexto:** premortem #5 identificó 15 modos de fallo (migración rota, refactor incompleto del core, confusión de modo, ownership mal definido, feature no se usa). Franco eligió: 1-2 personas concretas usando el feature, alcance "feature completo", multi-owner, migración shadow+cutover.
+
+**Cambios:**
+
+- **`core/db.py`** — nueva migración `M6` (premortem #5, Shadow), idempotente:
+  - Tabla `workspaces (id, kind, nombre, invitation_code_hash, saldo_inicial, fondo_usd, creado_en)` con `CHECK(kind IN ('personal','familiar'))`.
+  - Tabla `workspace_members (workspace_id, user_id, role, member_label, joined_en)` con PK compuesta, `UNIQUE (workspace_id, member_label)` para evitar labels colisionantes, y FK con `ON DELETE CASCADE`.
+  - Columna `workspace_id INTEGER REFERENCES workspaces(id)` nullable en `transacciones`, `categorias`, `presupuesto`, `configuracion`.
+  - Columna `creado_por_member_label TEXT` en `transacciones` (auditoría cosmética).
+  - **Backfill**: por cada usuario sin workspace personal, se crea uno con el saldo y fondo USD actuales; se agrega como admin con `member_label = fullname or username`; se UPDATE cada tabla poniendo `workspace_id` en las filas que todavía tenían `NULL`.
+- **`tests/test_premortem5.py`** — 15 tests nuevos organizados en 4 clases:
+  - `TestM6CreaInfraestructura` (4 tests): tablas y columnas nuevas existen.
+  - `TestM6BackfillCorrecto` (6 tests, incluyen invariante crítico): `COUNT(tabla WHERE user_id = u) == COUNT(tabla WHERE workspace_id = personal_de(u))` para las 4 tablas y todos los usuarios; ninguna fila queda con `workspace_id IS NULL`.
+  - `TestM6Idempotente` (2 tests): correr `_migrate()` dos veces no duplica workspaces ni miembros.
+  - `TestM6ConstraintsActivos` (3 tests): CHECK, UNIQUE y FK constraints disparan.
+
+**Sanity:** **91/91 tests verdes** (76 anteriores + 15 nuevos M6).
+
+**Notas de la sesión:** durante la reconstrucción del final de `core/db.py` (perdido en un edit anterior por conflicto de OneDrive), aprovechamos para dejar documentado en el docstring de `connect()` que se usa `isolation_level=None` (necesario para el BEGIN/COMMIT manual de `core/ingest.py`) y en `set_config()` que no hace commit interno (el caller decide). Un residual de null bytes en el archivo (metido por OneDrive) rompía `_purge_old_backups` — se limpió.
+
+---
+
+## 2026-06-26 · Subcategorías visibles en UI (M2)
+
+**Qué:** la subcategoría ya estaba en datos (`core/categorizer.py`, `core/metrics.py::load_categorias_full`) pero solo el libro Diario la mostraba. Las otras vistas usaban únicamente el motivo, dejando ambigüedad: "Compras" puede ser supermercado, ropa o regalos.
+
+**Cambios:**
+- **Transacciones** (`ui/views/transacciones.py`): la tabla de últimas 20 transacciones suma una columna "Subcategoría" después de "Motivo". Se calcula fila a fila con `efective_grupo()` aplicando la regla dual (misma lógica del libro Diario).
+- **Mensual** (`ui/views/mensual.py`):
+  - Tabla "Previsión vs Realidad": columna "Subcategoría" después de "Motivo".
+  - Editor de previsiones (expander): columna "Subcategoría" disabled junto a "Motivo" y "Grupo".
+- **Dashboard donut** (`ui/views/dashboard.py`): toggle `st.radio` con opciones "Motivo" / "Subcategoría" arriba del gráfico. Si el usuario elige Subcategoría, reagrupa el DataFrame localmente (sin tocar core) preservando los colores del grupo para mantener semántica visual.
+- **Libro Diario**: ya estaba — no se tocó.
+
+**Sanity:** 40/40 .py compilan. Sin cambios de schema, sin migración, sin afectar reconciliación de Caja.
+
+---
+
 ## 2026-06-26 · Reorganización para repo público
 
 **Qué:** se preparó el proyecto para un repo público en GitHub (`mis-finanzas-personales`).

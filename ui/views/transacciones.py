@@ -18,7 +18,9 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from core.categorizer import efective_grupo
 from core.db import connect
+from core.metrics import load_categorias_full
 from core.parsers import parse_expression
 from core.transactions import (
     all_motivos,
@@ -274,15 +276,30 @@ def _form_alta_edicion(motivos: list[str]) -> None:
 def _tabla_recientes() -> None:
     with connect() as conn:
         recent = list_recent(conn, n=20)
+        cats_full = load_categorias_full(conn)
 
     if not recent:
         st.info("No hay transacciones todavía. Agregá la primera arriba ↑")
         return
 
     df = pd.DataFrame(recent)
+
+    # Enriquecer con grupo + subcategoría aplicando la regla dual fila a fila
+    # (misma lógica que usa el libro Diario y el Dashboard).
+    grupos, subs = [], []
+    for _, row in df.iterrows():
+        g, s = efective_grupo(
+            row["motivo"], float(row["pasivos"]), float(row["ingresos"]), cats_full,
+        )
+        grupos.append(g)
+        subs.append(s or "—")
+    df["grupo"] = grupos
+    df["subcategoria"] = subs
+
     df_disp = pd.DataFrame({
         "Fecha": pd.to_datetime(df["fecha"]).dt.strftime("%d/%m/%Y"),
         "Motivo": df["motivo"],
+        "Subcategoría": df["subcategoria"],
         "Importe": [
             fmt_ars(r["ingresos"] if r["ingresos"] > 0 else -r["pasivos"])
             for _, r in df.iterrows()

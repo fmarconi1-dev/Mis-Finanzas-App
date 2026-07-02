@@ -317,42 +317,170 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 "CREATE INDEX IF NOT EXISTS idx_configuracion_user ON configuracion(user_id)"
             )
 
+        # ============================================================
+        # M6 (premortem #5, SHADOW): infraestructura para workspaces.
+        # ============================================================
+        # Modelo: cada usuario tiene un workspace personal (kind='personal')
+        # creado automáticamente acá. Puede tener además uno o más workspaces
+        # familiares (kind='familiar') compartidos con otros usuarios vía
+        # código de invitación.
+        #
+        # Esta migración SOLO agrega infraestructura (tablas + columnas +
+        # backfill). Las queries del `core/` siguen filtrando por `user_id`
+        # — el cutover a `workspace_id` viene en M7. Esto permite deployar el
+        # cambio sin tocar comportamiento y validar que la data quedó bien
+        # antes del cutover.
+        #
+        # Invariante de la migración (verificada en tests/test_premortem5.py):
+        #   ∀ usuario u, ∀ tabla T ∈ {transacciones, categorias, presupuesto,
+        #                              configuracion}:
+        #     COUNT(T WHERE user_id = u) ==
+        #     COUNT(T WHERE workspace_id = workspace_personal_de(u))
+
+        # 6.1: tablas nuevas.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kind TEXT NOT NULL CHECK(kind IN ('personal', 'familiar')),
+                nombre TEXT NOT NULL,
+                invitation_code_hash TEXT,
+                saldo_inicial REAL NOT NULL DEFAULT 0,
+                fondo_usd REAL NOT NULL DEFAULT 0,
+                creado_en TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS workspace_members (
+                workspace_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'viewer')),
+                member_label TEXT NOT NULL,
+                joined_en TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (workspace_id, user_id),
+                UNIQUE (workspace_id, member_label),
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES usuarios(id) ON DELETE CASCADE
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_members_user ON workspace_members(user_id)"
+        )
+
+        # 6.2: columna workspace_id (nullable durante shadow) en las 4 tablas.
+        for tabla in ("transacciones", "categorias", "presupuesto", "configuracion"):
+            cols = [r["name"] for r in cur.execute(f"PRAGMA table_info({tabla})")]
+            if "workspace_id" not in cols:
+                cur.execute(
+                    f"ALTER TABLE {tabla} ADD COLUMN workspace_id INTEGER REFERENCES workspaces(id)"
+                )
+                cur.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{tabla}_workspace ON {tabla}(workspace_id)"
+                )
+
+        # 6.3: columna creado_por_member_label en transacciones (auditoría
+        # cosmética: dentro de un workspace familiar, qué miembro la cargó).
+        trans_cols = [r["name"] for r in cur.execute("PRAGMA table_info(transacciones)")]
+        if "creado_por_member_label" not in trans_cols:
+            cur.execute("ALTER TABLE transacciones ADD COLUMN creado_por_member_label TEXT")
+
+        # 6.4: backfill — por cada usuario sin workspace personal, crear uno
+        # con el saldo + fondo USD actuales, y asociarlo como admin con
+        # member_label = fullname (o username si no hay fullname).
+        usuarios_sin_personal = cur.execute("""
+            SELECT u.id, u.username, u.fullname
+            FROM usuarios u
+            WHERE NOT EXISTS (
+                SELECT 1 FROM workspace_members wm
+                JOIN workspaces w ON w.id = wm.workspace_id
+                WHERE wm.user_id = u.id AND w.kind = 'personal'
+            )
+        """).fetchall()
+
+        for u in usuarios_sin_personal:
+            row_saldo = cur.execute(
+                "SELECT valor FROM configuracion "
+                "WHERE clave = 'saldo_inicial_caja' AND user_id = ?",
+                (u["id"],),
+            ).fetchone()
+            row_fondo = cur.execute(
+                "SELECT valor FROM configuracion "
+                "WHERE clave = 'fondo_emergencia_usd' AND user_id = ?",
+                (u["id"],),
+            ).fetchone()
+            try:
+                saldo = float(row_saldo["valor"]) if row_saldo else 0.0
+            except (ValueError, TypeError):
+                saldo = 0.0
+            try:
+                fondo = float(row_fondo["valor"]) if row_fondo else 0.0
+            except (ValueError, TypeError):
+                fondo = 0.0
+
+            nombre_ws = f"Personal de {u['fullname'] or u['username']}"
+            cur.execute(
+                "INSERT INTO workspaces (kind, nombre, saldo_inicial, fondo_usd) "
+                "VALUES ('personal', ?, ?, ?)",
+                (nombre_ws, saldo, fondo),
+            )
+            ws_id = cur.lastrowid
+            member_label = u["fullname"] or u["username"]
+            cur.execute(
+                "INSERT INTO workspace_members "
+                "(workspace_id, user_id, role, member_label) "
+                "VALUES (?, ?, 'admin', ?)",
+                (ws_id, u["id"], member_label),
+            )
+
+            for tabla in ("transacciones", "categorias", "presupuesto", "configuracion"):
+                cur.execute(
+                    f"UPDATE {tabla} SET workspace_id = ? "
+                    f"WHERE user_id = ? AND workspace_id IS NULL",
+                    (ws_id, u["id"]),
+                )
+
         cur.execute("COMMIT")
     except Exception:
         cur.execute("ROLLBACK")
         raise
 
 
+# ============================================================
+#  Conexión y init
+# ============================================================
+
 def get_db_path() -> Path:
-    """Lee la ruta a la DB del entorno o usa el default."""
-    raw = os.environ.get("DB_PATH", str(DEFAULT_DB_PATH))
-    return Path(raw)
+    """Ruta a la DB activa: respeta `DB_PATH` (env) o usa el default."""
+    return Path(os.environ.get("DB_PATH", str(DEFAULT_DB_PATH)))
 
 
 def connect(db_path: Optional[Path] = None) -> sqlite3.Connection:
-    """Abre una conexión SQLite con row_factory configurado para acceso por nombre."""
+    """Abrir una conexión SQLite con row_factory, WAL y FKs activos.
+
+    `isolation_level=None` deshabilita el autocommit implícito del driver:
+    así los `BEGIN`/`COMMIT`/`ROLLBACK` que escribimos en el código (ej.
+    `core/ingest.py`, `_migrate()`) funcionan tal como están escritos. Sin
+    esto, el driver intercala transacciones implícitas y rompe el control
+    manual.
+    """
     path = Path(db_path) if db_path is not None else get_db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path), isolation_level=None)  # autocommit-friendly
+    conn = sqlite3.connect(path, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
 def init_db(db_path: Optional[Path] = None) -> None:
-    """Crea el schema si no existe y corre migraciones pendientes. Idempotente."""
+    """Crear schema base si no existe + correr migraciones idempotentes."""
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
         _migrate(conn)
 
 
-# ---------- Configuración (clave/valor) ----------
-
 def _resolve_user_id(user_id: Optional[int]) -> int:
-    """Si user_id es None, lo toma del contextvar. Si no hay contexto, error."""
-    if user_id is not None:
-        return user_id
-    return require_current_user_id()
+    """Resuelve user_id explícito o lo lee del contextvar."""
+    return user_id if user_id is not None else require_current_user_id()
 
 
 def set_config(
@@ -361,20 +489,28 @@ def set_config(
     valor: str,
     user_id: Optional[int] = None,
 ) -> None:
+    """UPSERT en `configuracion` filtrando por (clave, user_id).
+
+    NO hace commit — eso queda a cargo del caller. Importante para no romper
+    transacciones externas (caso típico: `core/ingest.py` que hace BEGIN/COMMIT
+    explícito alrededor del bulk insert + set_config).
+    El context manager de `connect()` y los `with conn:` commitean al salir.
+    """
     uid = _resolve_user_id(user_id)
     conn.execute(
         "INSERT INTO configuracion (clave, valor, user_id) VALUES (?, ?, ?) "
         "ON CONFLICT(clave, user_id) DO UPDATE SET valor = excluded.valor",
-        (clave, valor, uid),
+        (clave, str(valor), uid),
     )
 
 
 def get_config(
     conn: sqlite3.Connection,
     clave: str,
-    default: Optional[str] = None,
+    default: str = "",
     user_id: Optional[int] = None,
-) -> Optional[str]:
+) -> str:
+    """Lee `clave` para el usuario activo. Devuelve `default` si no existe."""
     uid = _resolve_user_id(user_id)
     row = conn.execute(
         "SELECT valor FROM configuracion WHERE clave = ? AND user_id = ?",
@@ -383,69 +519,65 @@ def get_config(
     return row["valor"] if row else default
 
 
-# ---------- Backups ----------
-
 def backup_db(
-    db_path: Optional[Path] = None,
-    retention_days: int = 30,
-    keep_recent: int = 10,
+    conn: sqlite3.Connection, db_path: Optional[Path] = None
 ) -> Path:
-    """Copia la DB a `data/backups/finanzas-YYYYMMDD-HHMMSS.db` y purga viejos.
-
-    Se invoca tras cada escritura desde la UI. Es deliberadamente síncrono
-    y barato (el archivo SQLite de finanzas personales pesará pocos MB).
-
-    Retención (premortem #3, R2): por EDAD, no por cantidad. Una sesión
-    intensa de carga ya no purga el historial: se conservan los últimos
-    `keep_recent` backups inmediatos + el ÚLTIMO backup de cada día de los
-    últimos `retention_days` días. Ventana de recuperación real: ~30 días.
-    """
-    src = Path(db_path) if db_path is not None else get_db_path()
-    if not src.exists():
-        raise FileNotFoundError(f"No se puede backupear; la DB no existe en {src}")
-
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = BACKUP_DIR / f"finanzas-{timestamp}.db"
-    # Usamos el API nativo de SQLite (no shutil.copy) para garantizar consistencia
-    # incluso si hay otra conexión escribiendo.
-    with connect(src) as src_conn, sqlite3.connect(str(dest)) as dest_conn:
-        src_conn.backup(dest_conn)
-
-    _purge_old_backups(retention_days=retention_days, keep_recent=keep_recent)
+    """Copia online de la DB a `BACKUP_DIR/finanzas-YYYYMMDD-HHMMSS.db`."""
+    backup_dir = BACKUP_DIR
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dest = backup_dir / f"finanzas-{ts}.db"
+    backup_conn = sqlite3.connect(dest)
+    try:
+        conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+    retention = int(os.environ.get("BACKUP_RETENTION", "30"))
+    _purge_old_backups(retention_days=retention, keep_recent=10)
     return dest
 
 
-def _purge_old_backups(retention_days: int = 30, keep_recent: int = 10) -> None:
-    """Purga por edad: conserva los `keep_recent` más nuevos + el último
-    backup de cada día dentro de la ventana de `retention_days` días.
+def _purge_old_backups(
+    retention_days: int = 30, keep_recent: int = 10
+) -> None:
+    """Conserva el ULTIMO backup de cada dia dentro de retention_days +
+    los keep_recent absolutamente mas recientes.
 
-    El nombre `finanzas-YYYYMMDD-HHMMSS.db` ordena cronológicamente por
-    string, así que `sorted()` alcanza.
+    Usa el `BACKUP_DIR` del módulo (monkeypatcheable por los tests).
     """
-    backups = sorted(BACKUP_DIR.glob("finanzas-*.db"))
-    if not backups:
+    backup_dir = BACKUP_DIR
+    if not backup_dir.exists():
+        return
+    files = sorted(backup_dir.glob("finanzas-*.db"), key=lambda p: p.name)
+    if not files:
         return
 
-    keep: set[Path] = set(backups[-keep_recent:]) if keep_recent > 0 else set()
+    def _fecha_de(p: Path) -> Optional[str]:
+        stem = p.stem
+        partes = stem.split("-")
+        if len(partes) < 3:
+            return None
+        return partes[1]
 
-    # Último backup de cada día (sorted asc → el último sobrescribe).
-    prefix_len = len("finanzas-")
-    ultimo_por_dia: dict[str, Path] = {}
-    for b in backups:
-        dia = b.name[prefix_len:prefix_len + 8]  # YYYYMMDD
-        ultimo_por_dia[dia] = b
-
-    cutoff = (datetime.now() - timedelta(days=retention_days)).strftime("%Y%m%d")
-    for dia, b in ultimo_por_dia.items():
-        if dia >= cutoff:
-            keep.add(b)
-
-    for old in backups:
-        if old in keep:
+    a_preservar = set(files[-keep_recent:])
+    hoy = datetime.now().date()
+    ventana = {
+        (hoy - timedelta(days=i)).strftime("%Y%m%d")
+        for i in range(retention_days + 1)
+    }
+    por_dia = {}
+    for p in files:
+        fecha = _fecha_de(p)
+        if fecha is None or fecha not in ventana:
             continue
-        try:
-            old.unlink()
-        except OSError:
-            # No es crítico; el siguiente backup volverá a intentar.
-            pass
+        prev = por_dia.get(fecha)
+        if prev is None or p.name > prev.name:
+            por_dia[fecha] = p
+    a_preservar.update(por_dia.values())
+
+    for p in files:
+        if p not in a_preservar:
+            try:
+                p.unlink()
+            except OSError:
+                pass

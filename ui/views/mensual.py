@@ -15,7 +15,7 @@ from core.budget import (
     upsert_presupuesto,
 )
 from core.db import connect, get_db_path
-from core.metrics import load_categorias_map
+from core.metrics import load_categorias_full, load_categorias_map
 from ui.helpers._format import fmt_ars
 from ui.helpers._theme import COLOR_DESAHORRO, COLOR_INGRESO
 from ui.helpers._tour import render_tour_panel
@@ -62,7 +62,9 @@ def _desvio_pct_100(real: float, prev: float) -> float | None:
     return ((real - prev) / prev) * 100
 
 
-def _build_display_df(df: pd.DataFrame) -> pd.DataFrame:
+def _build_display_df(
+    df: pd.DataFrame, subcats_por_motivo: dict[str, str] | None = None,
+) -> pd.DataFrame:
     """Construye la tabla con columnas mixtas: strings (montos con $1.234,56) y
     números (para que `column_config.ProgressColumn` y `NumberColumn` rendericen
     barras y formato de porcentaje correctamente)."""
@@ -71,8 +73,12 @@ def _build_display_df(df: pd.DataFrame) -> pd.DataFrame:
         lambda r: _pct_consumido(r["monto_real"], r["monto_previsto"]), axis=1
     )
 
+    subs_map = subcats_por_motivo or {}
+    subs_col = base["motivo"].map(lambda m: subs_map.get(m, "") or "—")
+
     rows = pd.DataFrame({
         "Motivo": base["motivo"],
+        "Subcategoría": subs_col,
         "Grupo": base["grupo"],
         "Previsión": base["monto_previsto"].map(fmt_ars),
         "Realidad": base["monto_real"].map(fmt_ars),
@@ -84,25 +90,25 @@ def _build_display_df(df: pd.DataFrame) -> pd.DataFrame:
     # Totales (preservan numeric en las dos últimas columnas).
     t = _totales(df)
     totales = pd.DataFrame([
-        {"Motivo": "TOTAL INGRESOS", "Grupo": "",
+        {"Motivo": "TOTAL INGRESOS", "Subcategoría": "", "Grupo": "",
          "Previsión": fmt_ars(t["ing_prev"]),
          "Realidad": fmt_ars(t["ing_real"]),
          "Desvío": fmt_ars(t["ing_real"] - t["ing_prev"]),
          "Desvío %": _desvio_pct_100(t["ing_real"], t["ing_prev"]),
          "Consumido": _pct_consumido(t["ing_real"], t["ing_prev"])},
-        {"Motivo": "TOTAL GASTOS (consumo)", "Grupo": "",
+        {"Motivo": "TOTAL GASTOS (consumo)", "Subcategoría": "", "Grupo": "",
          "Previsión": fmt_ars(t["gas_prev"]),
          "Realidad": fmt_ars(t["gas_real"]),
          "Desvío": fmt_ars(t["gas_real"] - t["gas_prev"]),
          "Desvío %": _desvio_pct_100(t["gas_real"], t["gas_prev"]),
          "Consumido": _pct_consumido(t["gas_real"], t["gas_prev"])},
-        {"Motivo": "TOTAL INVERSIÓN / AHORRO", "Grupo": "",
+        {"Motivo": "TOTAL INVERSIÓN / AHORRO", "Subcategoría": "", "Grupo": "",
          "Previsión": fmt_ars(t["inv_prev"]),
          "Realidad": fmt_ars(t["inv_real"]),
          "Desvío": fmt_ars(t["inv_real"] - t["inv_prev"]),
          "Desvío %": _desvio_pct_100(t["inv_real"], t["inv_prev"]),
          "Consumido": _pct_consumido(t["inv_real"], t["inv_prev"])},
-        {"Motivo": "SALDO MENSUAL", "Grupo": "",
+        {"Motivo": "SALDO MENSUAL", "Subcategoría": "", "Grupo": "",
          "Previsión": fmt_ars(t["saldo_prev"]),
          "Realidad": fmt_ars(t["saldo_real"]),
          "Desvío": fmt_ars(t["saldo_real"] - t["saldo_prev"]),
@@ -137,7 +143,11 @@ def render() -> None:
 
     with connect(db_path) as conn:
         cats = load_categorias_map(conn)
+        cats_full = load_categorias_full(conn)
         df = comparativa_mes(conn, anio, mes, categorias=cats)
+
+    # Mapping motivo → subcategoria para enriquecer la tabla de display.
+    subcats_por_motivo = {m: (s or "—") for m, (_, s) in cats_full.items()}
 
     if df.empty:
         with st.container(border=True):
@@ -155,7 +165,7 @@ def render() -> None:
     # ---------- Tabla con totales y barras de progreso ----------
 
     st.subheader(f"Previsión vs Realidad — {_MESES_ES[mes]} {anio}")
-    df_disp = _build_display_df(df)
+    df_disp = _build_display_df(df, subcats_por_motivo=subcats_por_motivo)
     st.dataframe(
         df_disp, use_container_width=True, hide_index=True,
         height=min(600, 38 * (len(df_disp) + 1)),
@@ -245,6 +255,7 @@ def _render_editor_previsiones(db_path, anio: int, mes: int) -> None:
     with st.expander(f"✏️ Editar previsiones de {_MESES_ES[mes]} {anio}", expanded=False):
         with connect(db_path) as conn:
             datos = previsiones_editor(conn, anio, mes)
+            cats_full = load_categorias_full(conn)
 
         if not datos:
             st.info(
@@ -254,8 +265,13 @@ def _render_editor_previsiones(db_path, anio: int, mes: int) -> None:
             return
 
         df_edit = pd.DataFrame(datos)
+        # Agregar columna subcategoría (read-only) para desambiguar el motivo.
+        df_edit["subcategoria"] = df_edit["motivo"].map(
+            lambda m: (cats_full.get(m, ("", None))[1]) or "—"
+        )
         df_edit = df_edit.rename(columns={
-            "motivo": "Motivo", "grupo": "Grupo", "previsto": "Previsto",
+            "motivo": "Motivo", "grupo": "Grupo",
+            "subcategoria": "Subcategoría", "previsto": "Previsto",
         })
 
         st.caption(
@@ -271,6 +287,7 @@ def _render_editor_previsiones(db_path, anio: int, mes: int) -> None:
             height=min(500, 38 * (len(df_edit) + 1)),
             column_config={
                 "Motivo": st.column_config.TextColumn("Motivo", disabled=True),
+                "Subcategoría": st.column_config.TextColumn("Subcategoría", disabled=True),
                 "Grupo": st.column_config.TextColumn("Grupo", disabled=True),
                 "Previsto": st.column_config.NumberColumn(
                     "Previsto (ARS)",

@@ -14,11 +14,10 @@ Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va comp
 - **Esfuerzo:** 30 min.
 - **Riesgo:** bajo. Si algún selector quedó desfasado, los tokens CSS `--cs-*` se ajustan en un solo lugar.
 
-### M2 · Subcategorías visibles en UI
-- **Qué:** la subcategoría (Supermercado, Alquiler, Sueldo) ya existe en `core/categorizer.py` pero no se muestra en Transacciones ni en el donut del Dashboard.
-- **Por qué:** desambiguar gastos. "Compras" puede ser supermercado, ropa o regalos: con la subcategoría se entiende qué dispara el mes.
-- **Esfuerzo:** 1 día.
-- **Riesgo:** bajo. Solo es UI + 2 queries adicionales.
+### ~~M2 · Subcategorías visibles en UI~~ ✅ Hecho (26/6/2026)
+- Transacciones, Mensual (tabla + editor) y Dashboard donut ahora muestran subcategoría.
+- Diario ya la mostraba.
+- Detalle en [BITACORA.md](BITACORA.md).
 
 ### Bug-fix · Eliminar archivos basura del raíz
 - `4.1.0`, `seed_finanzas.db-wal`, `.fuse_hidden0000001100000004` no se pudieron borrar desde acá (OneDrive bloqueó). **Pendiente que Franco los borre manualmente** desde Explorer antes del primer commit.
@@ -27,7 +26,13 @@ Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va comp
 
 ## 🟡 Importante (cambio estructural, requiere su propio premortem)
 
-### M3 · Grupo familiar (workspaces) — adaptado del proyecto paralelo
+### M3 · Grupo familiar (workspaces) — 🚧 EN CURSO
+
+**Progreso actual:**
+- ✅ **D1 (Shadow, 26/6/2026)**: migración M6 + backfill + 15 tests de invariante. Infraestructura lista, queries del core todavía usan `user_id`.
+- 📋 **D2 (Cutover)**: refactor de queries del core a `workspace_id`, contextvar `current_workspace_id`, UI completa (badge persistente + switcher + crear/unirse/salir + "firmar como" + multi-owner). Próximo turno.
+
+**Modelo de datos original (referencia):**
 - **Qué:** cada usuario podría tener un **Espacio Personal** + un **Espacio Familiar** compartido con código de invitación. Dentro del familiar, dropdown "firmar como" (Papá / Mamá / Juan) que queda en `creado_por_member_label`. Switch instantáneo entre ambos.
 - **Modelo SQLite propuesto:**
   ```
