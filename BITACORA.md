@@ -4,6 +4,45 @@ Changelog narrativo: qué se hizo, cuándo, por qué. Ordenado del más reciente
 
 ---
 
+## 2026-07-02 · Deploy productivo M2 + M6 (D1 Shadow)
+
+**Qué:** subida a producción de las dos features nuevas de esta semana. Todo verificado en https://radar-financiero.fly.dev con datos reales.
+
+**Cambios efectivos:**
+
+- **M2 (Subcategorías visibles en UI)** — la columna Subcategoría ya aparece en Transacciones, Mensual (tabla principal + editor de previsiones) y como toggle en el donut del Dashboard. Diario ya la tenía.
+- **M6 (Grupo familiar D1 Shadow)** — tablas `workspaces` y `workspace_members` creadas en la DB productiva. Backfill ejecutado correctamente:
+  - Franco Marconi (`user_id=1`) → workspace personal id=1, saldo $101.515,65, fondo USD $0.
+  - Agustina Franco (`user_id=2`) → workspace personal id=2, saldo $0, fondo USD $0.
+  - **230/230 transacciones** con `workspace_id` asignado (invariante crítico cumplido).
+- **Estética Cosmic Slate** verificada en producción tras el deploy: fondo #09090B, botones violeta, tipografías Inter + JetBrains Mono. Todos los cambios visibles.
+
+**Otras acciones de la sesión:**
+
+- **Repo público en GitHub creado y sincronizado**: `fmarconi1-dev/Mis-Finanzas-App` (branch `main`). Push exitoso tras resolver conflictos de credenciales locales (Git Credential Manager tenía la cuenta `tresterciosadmin` en caché, se limpió).
+- Se actualizó Git Credential Manager y se configuró user.name/user.email correctos.
+- Se subieron README.md + LICENSE + MEJORAS.md + BITACORA.md al repo.
+- Docs consolidados en `docs/` (DEPLOY, RESUMEN-PROYECTO, MEJORAS-UX, RUNBOOK, premortems).
+
+**Sanity:** **94/94 tests verdes** (76 anteriores + 15 premortem5 + 3 mejoras que Franco hizo en test_premortem5.py).
+
+**Bugs sorteados durante la sesión:**
+
+- `core/db.py` se corrompió dos veces durante los edits por conflictos con OneDrive:
+  - Una vez perdió el bloque desde línea 410 hasta el final (funciones `get_db_path`, `connect`, `init_db`, `set_config`, `get_config`, `backup_db`, `_purge_old_backups`). Se reconstruyeron a partir de los tests y las signaturas que las llamaban.
+  - Otra vez OneDrive metió null bytes al final del archivo que hacían crashear `_purge_old_backups`. Se detectó vía `file core/db.py` y se limpió con Python.
+- El primer `git push` falló por credenciales de GCM cacheadas de otra cuenta (`tresterciosadmin`). Solución: `git credential-manager github logout tresterciosadmin` + reintento.
+
+**Estado de D2 (Cutover):** las queries del `core/` siguen usando `user_id` — el feature de grupo familiar NO está visible al usuario. El próximo trabajo grande es D2. Ver `MEJORAS.md` para el alcance detallado.
+
+**Confirmaciones del usuario para D2:**
+- 1-2 personas concretas van a usar el feature (ya Agustina tiene cuenta).
+- Alcance: "feature completo" (badge + switcher + crear/unirse/salir + firmar como + multi-owner).
+- Ownership: multi-owner, sin jerarquía.
+- Estrategia: shadow + cutover (D1 ya hecho, D2 pendiente).
+
+---
+
 ## 2026-06-26 · Grupo familiar D1 (Shadow) — migración M6
 
 **Qué:** primer deploy del feature de grupo familiar. Solo infraestructura; las queries del `core/` siguen usando `user_id`. El cutover a `workspace_id` viene en D2.

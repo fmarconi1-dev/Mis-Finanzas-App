@@ -3,47 +3,76 @@
 Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va completando pasa a la [BITACORA](BITACORA.md).
 
 > **El backlog histórico de UX** vive en [`docs/MEJORAS-UX.md`](docs/MEJORAS-UX.md). Este archivo consolida lo que sigue pendiente.
+>
+> **Para el estado completo del proyecto**, ver [`docs/RESUMEN-PROYECTO.md § 19`](docs/RESUMEN-PROYECTO.md).
 
 ---
 
-## 🟢 Próximo (alto ROI, bajo riesgo)
+## 🔴 Próximo trabajo grande
 
-### M1.b · Verificar Cosmic Slate en producción
-- **Qué:** `fly deploy` con los cambios de paleta + tipografía aplicados (config.toml, `_theme.py`, `_styles.py`).
-- **Cómo:** correr el deploy, abrir la app en desktop + mobile, ver si los `data-testid` resisten en la versión de Streamlit en producción.
-- **Esfuerzo:** 30 min.
-- **Riesgo:** bajo. Si algún selector quedó desfasado, los tokens CSS `--cs-*` se ajustan en un solo lugar.
+### D2 · Grupo familiar Cutover (siguiente sesión)
 
-### ~~M2 · Subcategorías visibles en UI~~ ✅ Hecho (26/6/2026)
-- Transacciones, Mensual (tabla + editor) y Dashboard donut ahora muestran subcategoría.
-- Diario ya la mostraba.
-- Detalle en [BITACORA.md](BITACORA.md).
+**Contexto:** D1 (Shadow) ya está en producción — tablas `workspaces` y `workspace_members` creadas, backfill correcto, 15 tests de invariante en verde. Las queries del `core/` todavía filtran por `user_id`; el feature está invisible al usuario.
 
-### Bug-fix · Eliminar archivos basura del raíz
-- `4.1.0`, `seed_finanzas.db-wal`, `.fuse_hidden0000001100000004` no se pudieron borrar desde acá (OneDrive bloqueó). **Pendiente que Franco los borre manualmente** desde Explorer antes del primer commit.
+**Alcance (decidido con Franco 2/7/2026):**
+- Feature completo: badge persistente + switcher + crear/unirse/salir + "firmar como" + multi-owner.
+- Estimación: 4-5 días.
+
+**Backend (refactor):**
+- Nuevo contextvar `current_workspace_id` en `core/current_workspace.py` (o mismo `core/current_user.py`).
+- Refactor de queries: `user_id` → `workspace_id` en:
+  - `core/transactions.py` (list_recent, all_motivos, motivos_recientes, montos_frecuentes, insert/update/delete_transaction).
+  - `core/budget.py` (comparativa_mes, previsiones_editor, upsert/delete_presupuesto, copy_year, meses_con_datos, realidad_mensual_efectiva).
+  - `core/categorias.py` (todas las funciones CRUD).
+  - `core/diario.py` (libro_diario, saldo_inicial).
+  - `core/metrics.py` (load_transactions, load_categorias_map/full, compute_kpis, saldo_cuenta_corriente, fondo_emergencia_usd, etc.).
+  - `core/db.py::set_config/get_config`.
+- Módulo nuevo `core/workspaces.py` con: `create_family_workspace(user_id, nombre) → workspace_id, invitation_code`, `join_family_workspace(user_id, member_label, invitation_code)`, `leave_family_workspace(workspace_id, user_id)`, `list_user_workspaces(user_id)`, `set_active_workspace(session_state, workspace_id, member_label)`.
+- Código de invitación: `secrets.token_urlsafe(8)` + hash SHA-256 en DB. Match por hash.
+
+**UI:**
+- Badge persistente en la barra superior de `app.py` con el workspace activo y el `member_label` cuando corresponde.
+- Switcher (dropdown o botones) en `ui/views/configuracion.py` o directamente en la sidebar.
+- Formularios crear/unirse/salir en `ui/views/configuracion.py` sección nueva "Espacio compartido".
+- Dropdown "Firmar como" en `ui/views/transacciones.py` cuando el workspace activo es familiar. Guarda en `Transaccion.creado_por_member_label`.
+- Multi-owner: todos los miembros con role `admin`. Cualquiera puede invitar/expulsar.
+
+**Tests:**
+- Nuevos en `tests/test_premortem5.py`:
+  - Crear workspace familiar genera code único.
+  - Join con code correcto suma miembro; con code inválido rechaza.
+  - Leave elimina al miembro pero preserva el workspace si quedan más.
+  - `creado_por_member_label` se registra correctamente al insertar en familiar.
+  - Query de KPIs filtra correctamente por workspace_id (Franco Personal ≠ Franco+Agus Familiar).
+
+**Riesgos identificados en el premortem #5 a mitigar durante D2:**
+- Refactor incompleto: alguna query queda filtrando por `user_id` → filas del workspace equivocado.
+- Confusión de modo: cargás transacción en Personal creyendo estar en Familiar. Mitigación: badge grande y de color distinto por modo.
+- `miembroActivo` sin verificación: dejarlo explícito en la UI que es etiqueta cosmética, no auth.
+- Callbacks de Streamlit sin contextvar: pasar `workspace_id` explícito desde session_state (mismo patrón que ya usa el Fondo USD del Dashboard).
 
 ---
 
-## 🟡 Importante (cambio estructural, requiere su propio premortem)
+## 🟢 Trabajos chicos que quedaron sueltos
 
-### M3 · Grupo familiar (workspaces) — 🚧 EN CURSO
+### Voz consistente (Sección 7 del backlog UX)
+- Módulo `ui/helpers/_voz.py` con reglas documentadas + hitos de celebración (1ª transacción, 10ª, 50ª, 100ª, 365ª).
+- Integración en `ui/views/transacciones.py` post-insert.
+- **Esfuerzo:** 1 día. **Riesgo:** cero.
 
-**Progreso actual:**
-- ✅ **D1 (Shadow, 26/6/2026)**: migración M6 + backfill + 15 tests de invariante. Infraestructura lista, queries del core todavía usan `user_id`.
-- 📋 **D2 (Cutover)**: refactor de queries del core a `workspace_id`, contextvar `current_workspace_id`, UI completa (badge persistente + switcher + crear/unirse/salir + "firmar como" + multi-owner). Próximo turno.
+### Ajustar Fondo USD de Franco en producción
+- Después de M6, quedó en $0 (antes era $864). Editable desde el Dashboard.
+- No es bug: el backfill leyó el valor actual de `configuracion`. Puede que Franco lo haya bajado sin recordar o que el valor productivo ya estuviera en 0.
+- **Acción:** Franco lo ajusta desde el Dashboard cuando quiera.
 
-**Modelo de datos original (referencia):**
-- **Qué:** cada usuario podría tener un **Espacio Personal** + un **Espacio Familiar** compartido con código de invitación. Dentro del familiar, dropdown "firmar como" (Papá / Mamá / Juan) que queda en `creado_por_member_label`. Switch instantáneo entre ambos.
-- **Modelo SQLite propuesto:**
-  ```
-  workspaces(id, owner_user_id, kind, nombre, invitation_code_hash, saldo_inicial, fondo_usd, created_at)
-  workspace_members(workspace_id, user_id, role, member_label, joined_at)
-  -- transacciones: cambia user_id → workspace_id (+ creado_por_member_label opcional)
-  -- categorias / presupuesto / configuracion: idem workspace_id
-  ```
-- **Endurecimientos respecto a la otra app:** código de invitación con `secrets.token_urlsafe(8)` + hash (no `FAM-XXXX-NNN` predecible); member_labels editables (no hardcoded `['Papá', 'Mamá', 'Juan']`); UI deja claro que "firmar como" es etiqueta cosmética y NO impide editar transacciones de otros miembros.
-- **Esfuerzo:** 3-5 días.
-- **Riesgo:** ALTO. Cambia schema, toca todas las queries del core, afecta datos productivos. **Premortem específico requerido antes de ejecutar.**
+### Deuda técnica menor: `use_container_width`
+- Streamlit deprecó `use_container_width=True` en favor de `width='stretch'`. Removal después de 31/12/2025.
+- Búsqueda y reemplazo global en `ui/` — 5 minutos de trabajo.
+- No urgente pero hacerlo antes de fin de año 2025 para evitar warnings.
+
+---
+
+## 🟡 Importante — features grandes con premortem propio requerido
 
 ### M4 · Importador inteligente de CSV con LLM
 - **Qué:** cuando importás un CSV nuevo (no del formato Diario.csv original), una llamada offline a Claude / Gemini que devuelve mapping de columnas + sugerencias de categorías. Output revisable antes de impactar la DB.
@@ -57,18 +86,6 @@ Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va comp
 - **Esfuerzo:** 1 semana.
 - **Riesgo:** medio. Hay que cuidar la superficie de ataque del endpoint público.
 
----
-
-## 🟠 UX continua (del backlog histórico)
-
-### Sección 7 — Voz consistente (pendiente)
-- Módulo `ui/helpers/_voz.py` con reglas documentadas + hitos de celebración (1ª transacción, 10ª, 50ª, 100ª, 365ª).
-- Integración en `ui/views/transacciones.py` post-insert.
-- **Esfuerzo:** 1 día.
-
-### Sección 4.4 — Toggle claro / oscuro
-- Bajo impacto, conflictúa con el dark CSS de Cosmic Slate. Diferido.
-
 ### Sección 8 — Chatbot WhatsApp
 - Tier gratis de WhatsApp Business Cloud API (1000 conversaciones/mes). Arquitectura: FastAPI embebido + webhook. Requiere número dedicado verificado en Meta Business.
 - **Pre-requisito:** M5 (API sidecar) hecho.
@@ -80,6 +97,9 @@ Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va comp
 ### Sección 10 — Monetización
 - **NO publicidad** (mata confianza, regulatorio, matemática no cierra). Freemium o suscripción cuando llegue el momento.
 - Diferido hasta 5-10 usuarios activos.
+
+### Sección 4.4 — Toggle claro / oscuro
+- Bajo impacto, conflictúa con el dark CSS de Cosmic Slate. Diferido.
 
 ---
 
@@ -106,3 +126,18 @@ Pendiente que Franco haga manualmente (ver [`docs/RUNBOOK-OPERACION.md`](docs/RU
 ### NO reemplazar el Excel de Inviu para inversiones
 - **Decisión:** [Premortem #2](docs/premortems/premortem-inversiones-2026-05-27.md).
 - **Razón:** el Excel ya tiene addin BYMADATA tirando precios solo. Reemplazarlo implica mantener integraciones de precios. Mejor visualizar + reconciliar.
+
+---
+
+## ✅ Completado en las últimas sesiones
+
+- **M6 Grupo familiar D1 Shadow** (2/7/2026): tablas + backfill + 15 tests. Deploy exitoso en producción con 230+ transacciones y 2 workspaces creados (Franco y Agustina).
+- **M2 Subcategorías visibles en UI** (2/7/2026): Transacciones, Mensual (tabla + editor), Dashboard donut (toggle Motivo/Subcategoría).
+- **Estética Cosmic Slate** (26/6/2026): paleta zinc + violeta + esmeralda, tipografía Inter/Space Grotesk/JetBrains Mono.
+- **Reorganización moderada** (26/6/2026): `docs/`, `ui/{auth,views,helpers}`, imports actualizados.
+- **Repo público en GitHub** (26/6/2026): `fmarconi1-dev/Mis-Finanzas-App` con README + MEJORAS + BITACORA + LICENSE + `.gitignore` robusto.
+- **Fix bugs producción** (26/6/2026): HTML literal, TypeError `st.logo`, donut mobile.
+- **Premortem #4** (26/6/2026): decisión de NO migrar el stack.
+- **Premortem #5** (2/7/2026): 15 modos de fallo del grupo familiar identificados y mitigados en D1.
+
+Ver [BITACORA.md](BITACORA.md) para el detalle cronológico.

@@ -699,3 +699,156 @@ deja eso a 1 búsqueda + reemplazo.
 4. **M3 subcategorías visibles** (1 día).
 5. **M4 importador inteligente offline** (opcional).
 6. **M5 FastAPI sidecar** (opcional).
+
+---
+
+## 19. Estado actual (julio 2026) — LEER PRIMERO PARA RETOMAR
+
+Esta sección consolida lo hecho hasta la fecha. Si estás retomando el proyecto
+en una conversación nueva, empezá acá.
+
+### 19.1 Snapshot de producción
+- **URL**: https://radar-financiero.fly.dev
+- **Repo público**: https://github.com/fmarconi1-dev/Mis-Finanzas-App (rama `main`)
+- **Usuarios reales**: 2 (Franco Marconi, Agustina Franco), cada uno con su
+  workspace personal creado por M6.
+- **Transacciones de Franco**: 230+ (crece con el uso). Rango: enero 2026 → hoy.
+- **Datos productivos intactos** desde el deploy inicial de mayo. Volumen Fly
+  `finanzas_data` (1 GB) persiste entre deploys.
+- **Tests**: 94/94 verdes.
+
+### 19.2 Feature list actual
+- Auth bcrypt + rate-limit login + signup con `SIGNUP_CODE` + sesión
+  "recordarme" con `SESSION_SECRET`.
+- Dashboard (KPIs anuales/mensuales + evolución de Caja + Ingresos vs Gastos +
+  donut con toggle Motivo/Subcategoría).
+- Transacciones (alta rápida con chips + parser aritmético + edit/delete +
+  columna Subcategoría).
+- Libro Diario (últimos N días con saldo acumulado + Subcategoría).
+- Mensual (Previsión vs Realidad + editor inline + columna Subcategoría).
+- Configuración (editor de categorías con subcategoría editable, motivos sin
+  uso, saldo inicial, export a Excel).
+- Onboarding para usuarios nuevos.
+- Backup automático en cada escritura + retención inteligente (último de cada
+  día por 30 días + 10 más recientes).
+- Estética Cosmic Slate (paleta zinc-950 + acentos violeta + tipografía Inter +
+  Space Grotesk + JetBrains Mono).
+- **Infra de grupo familiar (D1 Shadow)**: tablas `workspaces` y
+  `workspace_members` creadas y con backfill correcto. Las queries del `core/`
+  todavía filtran por `user_id`. El feature NO está expuesto al usuario aún.
+
+### 19.3 Estructura del repo (post-reorg moderada)
+```
+.
+├── app.py                    Entry point Streamlit
+├── core/                     Lógica pura, testeable
+│   ├── auth.py, budget.py, categorias.py, categorizer.py
+│   ├── current_user.py       contextvar de user_id
+│   ├── db.py                 schema + migraciones M1-M6 + backups
+│   ├── diario.py, export.py, ingest.py, metrics.py, parsers.py
+│   ├── session_tokens.py     tokens HMAC de sesión
+│   └── transactions.py
+├── ui/
+│   ├── auth/login.py
+│   ├── views/                dashboard, transacciones, diario, mensual,
+│   │                         configuracion, onboarding
+│   └── helpers/              _format, _html, _logo, _responsive, _styles,
+│                             _theme, _tour
+├── tests/                    test_kpis, test_parsers, test_reconciliacion,
+│                             test_premortem3, test_premortem5 (94/94 verdes)
+├── scripts/
+│   ├── setup_password.py, backup_remoto.ps1
+├── docs/                     este RESUMEN + DEPLOY + RUNBOOK + MEJORAS-UX +
+│                             premortems + README-LEGACY
+├── assets/                   logo.svg + logo-horizontal.svg
+├── README.md, MEJORAS.md, BITACORA.md, LICENSE
+├── Dockerfile, docker-compose.yml, docker-entrypoint.sh, fly.toml
+└── requirements.txt
+```
+
+### 19.4 Migraciones aplicadas (idempotentes, corren en cada `init_db()`)
+- **M1**: user_id + tabla usuarios.
+- **M2**: columna subcategoria en categorias.
+- **M3**: reclasificación Fase 2b (Compra Divisa → Inversion, Venta divisa →
+  Desahorro).
+- **M4**: PKs compuestas con user_id.
+- **M5**: user_id sin DEFAULT (INSERT sin user_id falla ruidoso).
+- **M6 (Shadow)**: workspaces + workspace_members + columna `workspace_id` en
+  las 4 tablas + `creado_por_member_label` en transacciones + backfill.
+
+### 19.5 Backlog inmediato (ver también MEJORAS.md)
+
+**D2 (Grupo familiar Cutover) — próximo trabajo grande**
+- Refactor de queries del core: `user_id` → `workspace_id`. Archivos afectados:
+  `core/transactions.py`, `core/budget.py`, `core/categorias.py`,
+  `core/diario.py`, `core/metrics.py`, `core/db.py::set_config/get_config`.
+- Nuevo contextvar en `core/current_workspace.py` (o mismo archivo current_user
+  con dos contextvars).
+- UI de grupo familiar (feature completo — ver premortem #5):
+  - Badge persistente arriba con workspace activo.
+  - Switcher Personal ↔ Familiar.
+  - Formularios crear/unirse/salir.
+  - Dropdown "firmar como" (member_label).
+  - Multi-owner (todos los miembros son admin sin jerarquía).
+- Tests nuevos en `test_premortem5.py` para el cutover.
+
+**Otros pendientes menores**
+- **Voz consistente (Sección 7 del backlog UX)**: `_voz.py` con hitos de
+  celebración (1ª, 10ª, 50ª, 100ª, 365ª transacción). 1 día.
+- **Deuda técnica**: reemplazar `use_container_width=True` por `width='stretch'`
+  antes de fin de 2025 (deprecation Streamlit). Búsqueda-reemplazo de 5 min.
+- **Fondo USD de Franco**: quedó en $0 después de M6 (antes era $864). Puede
+  ser porque él lo editó manualmente o porque la config productiva ya estaba
+  en 0 al momento del backfill. Sin acción, ajustable desde Dashboard.
+
+**Decisiones cerradas (no hacer)**
+- NO migrar el stack a React + Firestore + Gemini (premortem #4).
+- NO reemplazar el Excel de Inviu para inversiones (premortem #2).
+- NO publicidad como monetización.
+
+### 19.6 Decisiones tomadas para grupo familiar (input de Franco 2/7/2026)
+
+Base sobre la que trabajar D2:
+- **Usuarios reales previstos**: 1-2 personas concretas (ya Agustina tiene
+  cuenta). El feature vale la pena.
+- **Alcance**: "feature completo" (badge + switcher + crear/unirse/salir +
+  firmar como + multi-owner). 4-5 días.
+- **Ownership**: multi-owner. Cualquier miembro puede admin. Sin jerarquía.
+  Workspace sobrevive mientras quede un miembro.
+- **Estrategia de migración**: Shadow (D1, hecho) + Cutover (D2, pendiente).
+
+### 19.7 Cómo retomar en una conversación nueva
+
+1. Abrí este documento y compartilo con Claude ("estoy retomando este proyecto,
+   leé el RESUMEN-PROYECTO.md sección 19 y orientate").
+2. Pedile que verifique el estado actual con `fly logs` o consultas a la DB
+   antes de proponer cambios grandes.
+3. Continuá con **D2 (Grupo familiar Cutover)** si eso es lo prioritario, o
+   con cualquier otro item del backlog en MEJORAS.md.
+
+### 19.8 Comandos frecuentes
+```powershell
+# Local
+cd "C:\Users\Franco\OneDrive\Desktop\Finanzas Personales\App seguimiento de gastos"
+.venv\Scripts\activate
+pytest tests/ -v
+streamlit run app.py
+
+# Cloud
+fly status -a radar-financiero
+fly machine start -a radar-financiero    # si autostoppeó
+fly deploy
+fly logs -a radar-financiero
+fly ssh console -a radar-financiero
+
+# Verificación express de DB productiva
+fly ssh console -a radar-financiero
+python3 << 'EOF'
+import sqlite3
+c = sqlite3.connect('/app/data/finanzas.db')
+print('TXNS:', c.execute('SELECT COUNT(*) FROM transacciones').fetchone()[0])
+print('WORKSPACES:', c.execute('SELECT id, kind, nombre FROM workspaces').fetchall())
+print('MEMBERS:', c.execute('SELECT workspace_id, user_id, member_label FROM workspace_members').fetchall())
+print('TXNS con workspace_id:', c.execute('SELECT COUNT(*) FROM transacciones WHERE workspace_id IS NOT NULL').fetchone()[0])
+EOF
+```
