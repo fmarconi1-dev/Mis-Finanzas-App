@@ -438,6 +438,42 @@ def _migrate(conn: sqlite3.Connection) -> None:
                     (ws_id, u["id"]),
                 )
 
+        # ============================================================
+        # M7: subcategorías canonical para los motivos default.
+        # ============================================================
+        # Backfill idempotente: solo actualiza filas con subcategoria NULL
+        # o vacía. NO pisa subcategorías puestas manualmente por el usuario.
+        # Cubre los motivos que vienen en `DEFAULT_CATEGORIAS_NEW_USER` y
+        # `DEFAULT_CATEGORIAS` de `core/categorizer.py`.
+        _default_subcats = {
+            "Haberes Fundación":  "Sueldo",
+            "Haberes SBT":        "Sueldo",
+            "Haberes UCEMA":      "Sueldo",
+            "Sueldo":             "Sueldo",
+            "Otros ingresos":     "Otros",
+            "Venta divisa":       "Desahorro",
+            "Retiro Inversiones": "Desahorro",
+            "Auto":               "Movilidad",
+            "Transportes":        "Movilidad",
+            "Expensas":           "Hogar",
+            "Servicios":          "Hogar",
+            "Impuestos":          "Impuestos",
+            "Pago tarjeta":       "Financiero",
+            "Compras":            "Consumo",
+            "Supermercado":       "Consumo",
+            "Salidas":            "Ocio",
+            "Viajes":             "Ocio",
+            "Inversiones":        "Activos financieros",
+            "Compra Divisa":      "Ahorro y Resguardo",
+        }
+        for motivo, subcat in _default_subcats.items():
+            cur.execute(
+                "UPDATE categorias SET subcategoria = ? "
+                "WHERE motivo = ? "
+                "AND (subcategoria IS NULL OR subcategoria = '')",
+                (subcat, motivo),
+            )
+
         cur.execute("COMMIT")
     except Exception:
         cur.execute("ROLLBACK")

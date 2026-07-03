@@ -326,6 +326,74 @@ class TestM6Idempotente:
         assert m_antes == m_despues, "M6 duplicó members al correrse 2 veces"
 
 
+class TestM7SubcategoriasCanonical:
+    """M7 rellena la columna `subcategoria` en `categorias` con los defaults
+    de la taxonomía cuando está NULL/vacía. NO pisa lo que el usuario editó."""
+
+    def test_subcategorias_default_se_setean(self, db_legacy):
+        conn, _ = db_legacy
+        # sembrar motivos comunes SIN subcategoría
+        c = conn.cursor()
+        for motivo, grupo in [
+            ("Auto", "Gasto Fijo"),
+            ("Compras", "Gasto Variable"),
+            ("Haberes Fundación", "Ingreso"),
+            ("Salidas", "Gasto Variable"),
+        ]:
+            c.execute(
+                "INSERT OR REPLACE INTO categorias (motivo, grupo, subcategoria, user_id) "
+                "VALUES (?, ?, NULL, 1)",
+                (motivo, grupo),
+            )
+        conn.commit()
+
+        _migrate(conn)
+
+        subs = {
+            r["motivo"]: r["subcategoria"]
+            for r in conn.execute(
+                "SELECT motivo, subcategoria FROM categorias WHERE user_id = 1"
+            )
+        }
+        assert subs["Auto"] == "Movilidad"
+        assert subs["Compras"] == "Consumo"
+        assert subs["Haberes Fundación"] == "Sueldo"
+        assert subs["Salidas"] == "Ocio"
+
+    def test_subcategoria_manual_no_se_pisa(self, db_legacy):
+        conn, _ = db_legacy
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO categorias (motivo, grupo, subcategoria, user_id) "
+            "VALUES ('Auto', 'Gasto Fijo', 'Mi subcat custom', 1)"
+        )
+        conn.commit()
+
+        _migrate(conn)
+
+        row = conn.execute(
+            "SELECT subcategoria FROM categorias "
+            "WHERE motivo = 'Auto' AND user_id = 1"
+        ).fetchone()
+        assert row["subcategoria"] == "Mi subcat custom"
+
+    def test_m7_idempotente(self, db_legacy):
+        conn, _ = db_legacy
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO categorias (motivo, grupo, subcategoria, user_id) "
+            "VALUES ('Auto', 'Gasto Fijo', NULL, 1)"
+        )
+        conn.commit()
+        _migrate(conn)
+        _migrate(conn)
+        row = conn.execute(
+            "SELECT subcategoria FROM categorias "
+            "WHERE motivo = 'Auto' AND user_id = 1"
+        ).fetchone()
+        assert row["subcategoria"] == "Movilidad"
+
+
 class TestM6ConstraintsActivos:
     """CHECK / UNIQUE / FK constraints disparan correctamente."""
 
