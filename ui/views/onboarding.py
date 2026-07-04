@@ -109,7 +109,7 @@ def render(user_id: int, fullname: str = "") -> None:
 
                 submitted = st.form_submit_button(
                     "Entrar al Dashboard →", type="primary",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         # ----- Footer: qué pasa después -----

@@ -65,11 +65,6 @@ Backlog priorizado. Se ordena por impacto / esfuerzo / riesgo. Lo que se va comp
 - No es bug: el backfill leyó el valor actual de `configuracion`. Puede que Franco lo haya bajado sin recordar o que el valor productivo ya estuviera en 0.
 - **Acción:** Franco lo ajusta desde el Dashboard cuando quiera.
 
-### Deuda técnica menor: `use_container_width`
-- Streamlit deprecó `use_container_width=True` en favor de `width='stretch'`. Removal después de 31/12/2025.
-- Búsqueda y reemplazo global en `ui/` — 5 minutos de trabajo.
-- No urgente pero hacerlo antes de fin de año 2025 para evitar warnings.
-
 ---
 
 ## 🟡 Importante — features grandes con premortem propio requerido
@@ -131,6 +126,7 @@ Pendiente que Franco haga manualmente (ver [`docs/RUNBOOK-OPERACION.md`](docs/RU
 
 ## ✅ Completado en las últimas sesiones
 
+- **Deploy estética 1** (3/7/2026): contraste WCAG en labels de métricas, focus-visible, prefers-reduced-motion, tabular-nums, radii unificados, `streamlit==1.58.0` pinneado, `use_container_width` → `width="stretch"`. Ver BITACORA.
 - **M6 Grupo familiar D1 Shadow** (2/7/2026): tablas + backfill + 15 tests. Deploy exitoso en producción con 230+ transacciones y 2 workspaces creados (Franco y Agustina).
 - **M2 Subcategorías visibles en UI** (2/7/2026): Transacciones, Mensual (tabla + editor), Dashboard donut (toggle Motivo/Subcategoría).
 - **Estética Cosmic Slate** (26/6/2026): paleta zinc + violeta + esmeralda, tipografía Inter/Space Grotesk/JetBrains Mono.

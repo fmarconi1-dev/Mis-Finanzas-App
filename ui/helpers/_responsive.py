@@ -28,7 +28,8 @@ _MOBILE_CSS = """
 @media (max-width: 640px) {
 
     /* Apilar columnas verticalmente. Cualquier st.columns(N) → 1 col. */
-    [data-testid="column"] {
+    [data-testid="column"],
+    [data-testid="stColumn"] {
         width: 100% !important;
         min-width: 100% !important;
         flex: 1 1 100% !important;
@@ -84,7 +85,8 @@ _MOBILE_CSS = """
 /* ----- Tablet (641-1024px) ----- */
 @media (min-width: 641px) and (max-width: 1024px) {
     /* Columnas de 4 en tablet → 2 por fila usando flex-wrap. */
-    [data-testid="column"] {
+    [data-testid="column"],
+    [data-testid="stColumn"] {
         min-width: 45%;
         flex: 1 1 45% !important;
     }

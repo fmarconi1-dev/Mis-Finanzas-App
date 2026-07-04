@@ -556,18 +556,33 @@ def get_config(
 
 
 def backup_db(
-    conn: sqlite3.Connection, db_path: Optional[Path] = None
+    conn: Optional[sqlite3.Connection] = None, db_path: Optional[Path] = None
 ) -> Path:
-    """Copia online de la DB a `BACKUP_DIR/finanzas-YYYYMMDD-HHMMSS.db`."""
+    """Copia online de la DB a `BACKUP_DIR/finanzas-YYYYMMDD-HHMMSS.db`.
+
+    `conn` es OPCIONAL: los call sites de core/ (transactions, budget,
+    categorias) llaman `backup_db()` sin argumentos y acá se abre una
+    conexión propia a la DB activa.
+
+    Regresión 2/7/2026: al reconstruir este módulo tras la corrupción de
+    OneDrive, la firma quedó exigiendo `conn` y TODA escritura en producción
+    crasheaba con TypeError (y sin backup). Cubierto por
+    tests/test_backup_regresion.py — no volver a hacer `conn` obligatorio.
+    """
     backup_dir = BACKUP_DIR
     backup_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = backup_dir / f"finanzas-{ts}.db"
+    conn_propia = conn is None
+    if conn_propia:
+        conn = sqlite3.connect(db_path if db_path is not None else get_db_path())
     backup_conn = sqlite3.connect(dest)
     try:
         conn.backup(backup_conn)
     finally:
         backup_conn.close()
+        if conn_propia:
+            conn.close()
     retention = int(os.environ.get("BACKUP_RETENTION", "30"))
     _purge_old_backups(retention_days=retention, keep_recent=10)
     return dest

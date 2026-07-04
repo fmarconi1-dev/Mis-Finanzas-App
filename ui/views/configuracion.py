@@ -73,7 +73,7 @@ def _editor_categorias(db_path) -> None:
 
     edited = st.data_editor(
         df_original,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         num_rows="fixed",
         height=altura,
@@ -140,7 +140,7 @@ def _alta_categoria(db_path) -> None:
         )
         nueva_sub = c3.text_input("Subcategoría (opcional)", key="nueva_cat_sub")
 
-        if c_btn.button("Crear", type="primary", use_container_width=True):
+        if c_btn.button("Crear", type="primary", width="stretch"):
             try:
                 with connect(db_path) as conn:
                     insert_categoria(conn, nuevo_motivo, nuevo_grupo, nueva_sub or None)
@@ -169,7 +169,7 @@ def _borrar_sin_uso(db_path) -> None:
     for motivo in huerfanos:
         c1, c2 = st.columns([4, 1])
         c1.write(f"• **{motivo}**")
-        if c2.button("🗑 Borrar", key=f"del_{motivo}", use_container_width=True):
+        if c2.button("🗑 Borrar", key=f"del_{motivo}", width="stretch"):
             try:
                 with connect(db_path) as conn:
                     delete_categoria(conn, motivo)
@@ -224,7 +224,7 @@ def render() -> None:
             df_p = pd.DataFrame(
                 [{"Motivo": m, "Grupo": g, "Subcategoría": s or "—"} for m, g, s in protegidas]
             )
-            st.dataframe(df_p, use_container_width=True, hide_index=True)
+            st.dataframe(df_p, width="stretch", hide_index=True)
             st.caption(
                 "‘Caja’ es la fila de saldo inicial que se importa del CSV. "
                 "No se edita desde acá para preservar la lógica de Caja."

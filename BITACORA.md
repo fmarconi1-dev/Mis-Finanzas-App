@@ -4,6 +4,57 @@ Changelog narrativo: qué se hizo, cuándo, por qué. Ordenado del más reciente
 
 ---
 
+## 2026-07-03 · HOTFIX — backup_db() rompía toda escritura en producción
+
+**Qué pasó:** desde el deploy del 2/7, agregar/editar/borrar transacciones, presupuestos o categorías en producción crasheaba con `TypeError: backup_db() missing 1 required positional argument: 'conn'`. Franco lo detectó al cargar un gasto real.
+
+**Causa raíz:** al reconstruir `core/db.py` tras la corrupción de OneDrive del 2/7, la firma quedó `backup_db(conn, db_path=None)` — pero los 9 call sites de `core/` (transactions, budget, categorias) llaman `backup_db()` sin argumentos. Los 94 tests estaban verdes porque **ninguno pasaba por backup_db**: los tests insertan con SQL crudo, no vía `insert_transaction`.
+
+**Datos:** el INSERT corre ANTES del backup y la conexión está en autocommit, así que las escrituras que crashearon probablemente SÍ persistieron (verificar duplicados si hubo reintentos). Lo que NO se generó desde el 2/7 son los backups por escritura.
+
+**Fix:** `conn` ahora es opcional en `backup_db` — sin argumentos abre conexión propia a la DB activa. Ambas formas de llamada son válidas.
+
+**Regresión cubierta:** `tests/test_backup_regresion.py` (3 tests): `backup_db()` a secas, `backup_db(conn)`, y el flujo completo `insert_transaction` → backup. Si la firma vuelve a cambiar, rompe el CI mental de `pytest`.
+
+---
+
+## 2026-07-03 · Deploy estética 2 — dashboard re-jerarquizado
+
+**Qué:** el Dashboard pasa de 14 métricas idénticas + gráficos en expanders a una jerarquía clara. Solo `ui/` — core y datos intactos.
+
+**Cambios (todos en `ui/views/dashboard.py` + CSS en `_styles.py`):**
+
+- **Selector de período** (`st.segmented_control`): Este mes / Últimos 3 meses / Año. El modelo mental de finanzas personales es mensual; antes solo había selector de año. KPIs, distribución y donut se calculan sobre el período; la evolución de Caja sigue mostrando la serie completa.
+- **Fila hero** (`st.container(key="kpi_hero")`): Resultado del período (grande, con delta en $ vs mismo tramo del período anterior) + Saldo CC + Fondo USD (editor donde estaba). CSS `.st-key-kpi_hero` agranda la métrica reina.
+- **KPIs con delta**: cada card compara contra el período anterior (% de cambio). `delta_color="inverse"` en gastos: subir gasto pinta rojo.
+- **Distribución del ingreso como barra apilada** (HTML custom) en lugar de 4 metrics de %. Si resto < 0 (salió más de lo que entró), alerta explícita en rojo.
+- **Gráficos siempre visibles**: los 3 expanders pasaron a containers con subheader. Las medias móviles quedaron en un `st.popover` "Ajustes" (progressive disclosure).
+- Donut scoped al período y toggle Motivo/Subcategoría con segmented control.
+- Fix responsive: las columnas en Streamlit 1.58 son `data-testid="stColumn"` (antes `"column"`); el CSS mobile cubre ambos.
+
+**Nota de comportamiento:** "Este mes" se ancla en la fecha calendario de hoy. Con una DB local desactualizada muestra el aviso "Sin movimientos en julio 2026" — es el comportamiento correcto, no un bug. En producción (datos al día) muestra el mes en curso.
+
+---
+
+## 2026-07-03 · Deploy estética 1 — accesibilidad + pin de Streamlit
+
+**Qué:** primer deploy del plan de mejoras UX/UI (guiado por la skill `ui-ux-web-moderno`). Solo CSS y dependencias — cero cambios en core/ ni en datos.
+
+**Cambios:**
+
+- Labels de `st.metric` de `#71717A` a `#A1A1AA`: a 11.5px daban ~3.6:1 de contraste, por debajo del 4.5:1 de WCAG AA.
+- `:focus-visible` violeta (2px, offset 2px) en botones, tabs, expanders y links — antes la navegación por teclado no tenía indicador fuera de los inputs.
+- `prefers-reduced-motion` respetado globalmente (transiciones a ~0 si el SO lo pide).
+- `font-variant-numeric: tabular-nums` en cifras; escala de radii formalizada (`--cs-radius-sm/md/lg` = 8/12/16) y alerts/toasts/dataframes unificados en 12px (había 8/10/12 mezclados).
+- **`streamlit==1.58.0` pinneado** (antes `>=1.33.0` flotante): protege el CSS por `data-testid` de upgrades sorpresivos y habilita API moderna (keyed containers, segmented_control) para los próximos deploys.
+- `use_container_width=True` → `width="stretch"` en toda la `ui/` (23 usos; el parámetro viejo estaba deprecado con removal post-2025).
+
+**Pre-deploy verificado en producción:** 230 transacciones al 02/07, usuarios franco + gugui_franco, invariante M6 intacto (230/230 con `workspace_id`).
+
+**Además:** se restauraron `BITACORA.md`, `MEJORAS.md` y `docs/RESUMEN-PROYECTO.md` locales, que OneDrive había truncado a mitad de palabra (el repo era la fuente de verdad; ojo con este modo de fallo, ya había corrompido `core/db.py` el 2/7).
+
+---
+
 ## 2026-07-02 · Deploy productivo M2 + M6 (D1 Shadow)
 
 **Qué:** subida a producción de las dos features nuevas de esta semana. Todo verificado en https://radar-financiero.fly.dev con datos reales.

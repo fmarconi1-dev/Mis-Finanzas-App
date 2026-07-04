@@ -177,21 +177,21 @@ def render_tour_panel(tab_name: str) -> None:
         if es_ultimo:
             if c1.button("🎉 Terminé el tour", type="primary",
                          key=f"tour_finish_{tab_name}",
-                         use_container_width=True):
+                         width="stretch"):
                 finish_tour()
                 st.rerun()
             if c2.button("Saltar", key=f"tour_skip_{tab_name}",
-                         use_container_width=True):
+                         width="stretch"):
                 finish_tour(skipped=True)
                 st.rerun()
         else:
             if c1.button("Listo, siguiente →", type="primary",
                          key=f"tour_next_{tab_name}",
-                         use_container_width=True):
+                         width="stretch"):
                 _advance()
                 st.toast(f"✅ {panel['hint'].replace('**', '')}", icon="👉")
                 st.rerun()
             if c2.button("Saltar tutorial", key=f"tour_skip_{tab_name}",
-                         use_container_width=True):
+                         width="stretch"):
                 finish_tour(skipped=True)
                 st.rerun()

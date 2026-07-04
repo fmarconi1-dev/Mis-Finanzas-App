@@ -53,7 +53,7 @@ def _render_login_form() -> None:
             key="login_password",
         )
         submitted = st.form_submit_button(
-            "Entrar", type="primary", use_container_width=True,
+            "Entrar", type="primary", width="stretch",
         )
 
     if submitted:
@@ -102,7 +102,7 @@ def _render_signup_form() -> None:
             help="Pedíselo a quien administra la app.",
         )
         submitted = st.form_submit_button(
-            "Crear cuenta", type="primary", use_container_width=True,
+            "Crear cuenta", type="primary", width="stretch",
         )
 
     if submitted:
@@ -164,7 +164,7 @@ def render_logout_button() -> None:
     fullname = st.session_state.get("current_user_fullname") or user
     with st.sidebar:
         st.markdown(f"👤 **{fullname}**")
-        if st.button("Cerrar sesión", use_container_width=True):
+        if st.button("Cerrar sesión", width="stretch"):
             for k in (
                 "logged_in", "current_user_id",
                 "current_username", "current_user_fullname",

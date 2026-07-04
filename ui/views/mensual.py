@@ -167,7 +167,7 @@ def render() -> None:
     st.subheader(f"Previsión vs Realidad — {_MESES_ES[mes]} {anio}")
     df_disp = _build_display_df(df, subcats_por_motivo=subcats_por_motivo)
     st.dataframe(
-        df_disp, use_container_width=True, hide_index=True,
+        df_disp, width="stretch", hide_index=True,
         height=min(600, 38 * (len(df_disp) + 1)),
         column_config={
             "Desvío %": st.column_config.NumberColumn(
@@ -207,7 +207,7 @@ def render() -> None:
         xaxis_tickangle=-30,
         legend=dict(orientation="h", y=1.1),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # ---------- Resumen del mes ----------
 
@@ -281,7 +281,7 @@ def _render_editor_previsiones(db_path, anio: int, mes: int) -> None:
 
         edited = st.data_editor(
             df_edit,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="fixed",
             height=min(500, 38 * (len(df_edit) + 1)),
@@ -344,7 +344,7 @@ def _render_editor_previsiones(db_path, anio: int, mes: int) -> None:
             min_value=0.0, step=1000.0, format="%.2f",
             key=f"bulk_monto_{anio}",
         )
-        if cb3.button("Aplicar al año", use_container_width=True,
+        if cb3.button("Aplicar al año", width="stretch",
                       key=f"bulk_apply_{anio}"):
             if bulk_monto <= 0:
                 st.error("El monto debe ser mayor a 0.")

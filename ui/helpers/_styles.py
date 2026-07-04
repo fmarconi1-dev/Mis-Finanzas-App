@@ -18,6 +18,16 @@ Tokens principales:
     --cs-positive: #10B981  esmeralda — ingresos / activos
     --cs-negative: #F43F5E  rosa/rojo — gastos / errores
 
+Escala de radii (usar SIEMPRE estos tres, no valores sueltos):
+    --cs-radius-sm: 8px    inputs, botones, chips
+    --cs-radius-md: 12px   cards, metrics, expanders, alerts, toasts, tablas
+    --cs-radius-lg: 16px   modals / hero cards
+
+Accesibilidad (deploy estética 1, jul 2026): labels de métricas en
+--cs-text-mid (#71717A a 11.5px daba ~3.6:1, bajo el 4.5:1 WCAG AA),
+focus-visible violeta para navegación por teclado, y respeto de
+prefers-reduced-motion.
+
 Tipografías cargadas desde Google Fonts:
     Inter (UI), Space Grotesk (display / títulos), JetBrains Mono (números).
 
@@ -57,6 +67,9 @@ _FONTS_IMPORT = """
     --cs-font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
     --cs-font-display: 'Space Grotesk', 'Inter', sans-serif;
     --cs-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    --cs-radius-sm: 8px;
+    --cs-radius-md: 12px;
+    --cs-radius-lg: 16px;
 }
 
 /* Body: fondo absoluto + tipografía Inter por default. */
@@ -106,6 +119,7 @@ h3 { font-weight: 600; color: #E4E4E7; }
 .cs-mono, code {
     font-family: 'JetBrains Mono', ui-monospace, monospace !important;
     letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
@@ -132,8 +146,9 @@ h3 { font-weight: 600; color: #E4E4E7; }
     color: #FFFFFF;
 }
 
+/* Label en --cs-text-mid: #71717A a este tamaño no cumplía 4.5:1 (WCAG AA). */
 [data-testid="stMetricLabel"] {
-    color: #71717A;
+    color: #A1A1AA;
     font-size: 0.72rem !important;
     font-weight: 600;
     text-transform: uppercase;
@@ -144,6 +159,22 @@ h3 { font-weight: 600; color: #E4E4E7; }
 [data-testid="stMetricDelta"] {
     font-weight: 500;
     font-size: 0.8rem !important;
+}
+
+/* ============================================================
+   2b. KPI hero (st.container(key="kpi_hero")): jerarquía. La
+   métrica reina (primera columna) más grande y con borde acento.
+   Cubrimos "stColumn" (moderno) y "column" (legacy).
+   ============================================================ */
+
+.st-key-kpi_hero [data-testid="stColumn"]:first-child [data-testid="stMetricValue"],
+.st-key-kpi_hero [data-testid="column"]:first-child [data-testid="stMetricValue"] {
+    font-size: 2.3rem !important;
+}
+
+.st-key-kpi_hero [data-testid="stColumn"]:first-child [data-testid="stMetric"],
+.st-key-kpi_hero [data-testid="column"]:first-child [data-testid="stMetric"] {
+    border-color: rgba(139, 92, 246, 0.30);
 }
 
 /* ============================================================
@@ -289,7 +320,7 @@ hr {
     border-left: 3px solid #8B5CF6;
     background: #18181B;
     color: #E4E4E7;
-    border-radius: 8px;
+    border-radius: var(--cs-radius-md);
 }
 
 /* ============================================================
@@ -321,7 +352,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
 
 [data-testid="stDataFrame"] {
     border: 1px solid #27272A;
-    border-radius: 8px;
+    border-radius: var(--cs-radius-md);
     overflow: hidden;
 }
 
@@ -330,7 +361,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
    ============================================================ */
 
 [data-testid="stAlert"] {
-    border-radius: 10px;
+    border-radius: var(--cs-radius-md);
     border: 1px solid #27272A;
     background: #18181B;
 }
@@ -344,6 +375,36 @@ code, [data-testid="stCode"] {
     color: #A78BFA !important;
     border-radius: 4px;
     font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* ============================================================
+   14. Focus visible: navegación por teclado (WCAG 2.4.7)
+   Los inputs ya tienen focus (sección 5); esto cubre botones,
+   tabs, expanders y links, que Streamlit deja sin outline.
+   ============================================================ */
+
+[data-testid="stButton"] button:focus-visible,
+[data-testid="stFormSubmitButton"] button:focus-visible,
+[data-testid="stDownloadButton"] button:focus-visible,
+[data-testid="stTabs"] button:focus-visible,
+[data-testid="stExpander"] summary:focus-visible,
+a:focus-visible {
+    outline: 2px solid var(--cs-accent) !important;
+    outline-offset: 2px;
+}
+
+/* ============================================================
+   15. Reduced motion: si el usuario pidió menos animación en su
+   sistema operativo, se respeta (transiciones a ~0).
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 </style>

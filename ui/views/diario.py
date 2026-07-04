@@ -73,7 +73,7 @@ def render() -> None:
     })
 
     st.dataframe(
-        df_disp, use_container_width=True, hide_index=True,
+        df_disp, width="stretch", hide_index=True,
         height=min(700, 38 * (len(df_disp) + 1)),
     )
 
@@ -96,4 +96,4 @@ def render() -> None:
         "Egresos": resumen["egresos"].apply(fmt_ars),
         "Neto": (resumen["ingresos"] - resumen["egresos"]).apply(fmt_ars),
     })
-    st.dataframe(resumen_disp, use_container_width=True, hide_index=True)
+    st.dataframe(resumen_disp, width="stretch", hide_index=True)

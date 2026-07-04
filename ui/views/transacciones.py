@@ -85,7 +85,7 @@ def _render_chips_rapidos(motivos: list[str]) -> None:
         st.caption("**Motivos frecuentes** — tocá uno para precargarlo:")
         cols = st.columns(len(recientes))
         for i, mot in enumerate(recientes):
-            if cols[i].button(mot, key=f"chip_mot_{i}", use_container_width=True):
+            if cols[i].button(mot, key=f"chip_mot_{i}", width="stretch"):
                 st.session_state["form_motivo"] = mot
                 st.rerun()
 
@@ -108,7 +108,7 @@ def _render_chips_rapidos(motivos: list[str]) -> None:
         cols = st.columns(len(montos))
         for i, m in enumerate(montos):
             if cols[i].button(fmt_ars(m), key=f"chip_mnt_{i}",
-                              use_container_width=True):
+                              width="stretch"):
                 st.session_state["form_importe_text"] = _fmt_importe_for_input(m)
                 st.rerun()
 
@@ -218,7 +218,7 @@ def _form_alta_edicion(motivos: list[str]) -> None:
             btn_label = "Actualizar transacción" if editing else "Agregar transacción"
 
         submitted = st.form_submit_button(
-            btn_label, type="primary", use_container_width=True,
+            btn_label, type="primary", width="stretch",
         )
 
     if not submitted:
@@ -308,7 +308,7 @@ def _tabla_recientes() -> None:
     })
 
     event = st.dataframe(
-        df_disp, use_container_width=True, hide_index=True,
+        df_disp, width="stretch", hide_index=True,
         on_select="rerun", selection_mode="single-row", key="recent_table",
     )
 
@@ -323,13 +323,13 @@ def _tabla_recientes() -> None:
 
     c1, c2 = st.columns(2)
     if c1.button(f"✏️ Editar {sel_label}", type="primary",
-                 use_container_width=True, key="btn_edit"):
+                 width="stretch", key="btn_edit"):
         _start_editing(sel_id)
         st.rerun()
 
     confirmar_key = f"confirm_delete_{sel_id}"
     if c2.button(f"🗑️ Borrar {sel_label}", type="secondary",
-                 use_container_width=True, key="btn_delete"):
+                 width="stretch", key="btn_delete"):
         st.session_state[confirmar_key] = True
 
     if st.session_state.get(confirmar_key):
